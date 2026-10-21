@@ -3,6 +3,7 @@ import Purchase from "../models/Purchase.js";
 import User from "../models/User.js";
 import Stripe from "stripe";
 import { fulfillPurchase } from "./webhooks.js";
+import { CourseProgress } from "../models/courseProgress.js";
 
 //api to get usetData
 export const getUserData = async (req, res) => {
@@ -201,3 +202,134 @@ export const verifyPurchase = async (req, res) => {
         return res.json({ success: false, message: error.message });
     }
 };
+
+
+//Update user course Progress
+export const updateUserCourseProgress = async (req, res) => {
+    try {
+        const auth = typeof req.auth === 'function' ? req.auth() : req.auth;
+        const userId = auth?.userId || req.headers['user-id'];
+
+        if (!userId) {
+            return res.json({ success: false, message: "user not found" });
+        }
+
+        const { courseId, lectureId } = req.body;
+
+        const pregressData = await CourseProgress.findOne({ courseId, userId });
+
+        if (pregressData) {
+            if (pregressData.lectureCompleted.includes(lectureId)) {
+                return res.json({
+                    success: true,
+                    message: "lecture already completed",
+                })
+            }
+            pregressData.lectureCompleted.push(lectureId)
+            await pregressData.save()
+        } else {
+            const newProgressData = new CourseProgress({
+                courseId,
+                userId,
+                lectureCompleted: [lectureId],
+            })
+            await newProgressData.save();
+        }
+
+        return res.json({
+            success: true,
+            message: "course progress updated successfully",
+        })
+
+    } catch (error) {
+        console.log(error);
+        return res.json({ success: false, message: error.message });
+    }
+}
+
+//controller to get user course progress
+export const getUserCourseProgress = async (req, res) => {
+    try {
+        const auth = typeof req.auth === 'function' ? req.auth() : req.auth;
+        const userId = auth?.userId || req.headers['user-id'];
+
+        if (!userId) {
+            return res.json({ success: false, message: "user not found" });
+        }
+
+        const { courseId } = req.body;
+
+        const pregressData = await CourseProgress.findOne({ courseId, userId });
+
+        if (!pregressData) {
+            return res.json({
+                success: false,
+                message: "No progress yet",
+            })
+        }
+        return res.json({
+            success: true,
+            message: "course progress fetched successfully",
+            progress: pregressData,
+        })
+    } catch (error) {
+        console.log(error);
+        return res.json({ success: false, message: error.message });
+    }
+}
+
+//controller to create Rating to course
+export const userRating = async (req, res) => {
+    try {
+        const auth = typeof req.auth === 'function' ? req.auth() : req.auth;
+        const userId = auth?.userId || req.headers['user-id'];
+
+        if (!userId) {
+            return res.json({ success: false, message: "user not found" });
+        }
+
+        const { courseId, rating } = req.body;
+
+        if (!courseId || !userId || !rating || rating < 1 || rating > 5) {
+            return res.json({ success: false, message: "invalid rating" });
+        }
+
+        const course = await Course.findById(courseId);
+
+        if (!course) {
+            return res.json({ success: false, message: "course not found" });
+        }
+        const user = await User.findById(userId);
+        if (!user || !user.enrolledCourses.includes(courseId)) {
+            return res.json({ success: false, message: "user has not enrolled in this course" });
+        }
+
+        const existingRatingIndex = course.courseRating.findIndex(item => item.userId.toString() === userId.toString());
+
+        if (existingRatingIndex != -1) {
+            course.courseRating[existingRatingIndex].rating = rating;
+        } else {
+            course.courseRating.push({ userId, rating });
+        }
+        await course.save();
+        const calculateAverageRating = (ratings) => {
+            if (!ratings || ratings.length === 0) return 0;
+            const sum = ratings.reduce((acc, rating) => acc + rating.rating, 0);
+            return sum / ratings.length;
+        }
+
+        //update average rating
+        const ratingData = course.courseRating;
+        const averageRating = calculateAverageRating(ratingData);
+        course.averageRating = averageRating;
+        await course.save();
+
+        return res.json({
+            success: true,
+            message: "rating created successfully",
+        })
+    } catch (error) {
+        console.log(error);
+        return res.json({ success: false, message: error.message });
+    }
+} 
