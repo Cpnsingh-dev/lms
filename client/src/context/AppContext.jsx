@@ -9,7 +9,6 @@ export const AppContext = createContext()
 export const AppContextProvider = (props) => {
 
     const currency = import.meta.env.VITE_CURRENCY
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
     const [allCourses, setAllCourses] = useState([]);
     const [isEducator, setIsEducator] = useState(true);
@@ -21,18 +20,7 @@ export const AppContextProvider = (props) => {
 
     //api call to fetch all courses
     const fetchCourses = async () => {
-        try {
-            const response = await fetch(`${backendUrl}/api/course/all`);
-            const data = await response.json();
-            if (data.success && Array.isArray(data.courses) && data.courses.length > 0) {
-                setAllCourses(data.courses);
-            } else {
-                setAllCourses(dummyCourses);
-            }
-        } catch (error) {
-            console.error("fetchCourses error, using fallback dummyCourses:", error);
-            setAllCourses(dummyCourses);
-        }
+        setAllCourses(dummyCourses)
     }
 
 
@@ -79,48 +67,26 @@ export const AppContextProvider = (props) => {
 
     //fetch user enrolled courses
     const fetchUserEnrolledCourses = async () => {
-        if (!user) {
-            setEnrolledCourses(dummyCourses);
-            return;
-        }
-
-        try {
-            const token = await getToken();
-            const headers = {
-                'user-id': user.id
-            };
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-
-            const response = await fetch(`${backendUrl}/api/user/enrolled`, { headers });
-            const data = await response.json();
-
-            if (data.success && Array.isArray(data.enrolledCourses)) {
-                setEnrolledCourses(data.enrolledCourses);
-            } else {
-                setEnrolledCourses(dummyCourses);
-            }
-        } catch (error) {
-            console.error("fetchUserEnrolledCourses error, using fallback:", error);
-            setEnrolledCourses(dummyCourses);
-        }
+        setEnrolledCourses(dummyCourses)
     }
 
     useEffect(() => {
         fetchCourses();
+        fetchUserEnrolledCourses();
     }, [])
+
+    const logToken = async () => {
+        console.log(await getToken());
+    }
 
     useEffect(() => {
         if (user) {
-            fetchUserEnrolledCourses();
-        } else {
-            fetchUserEnrolledCourses();
+            logToken();
         }
     }, [user])
 
     const value = {
-        currency, backendUrl, allCourses, navigate, calculateRating, getAverageRating, calculateChapterTime, courseDuration, totalLecture, isEducator, setIsEducator, enrolledCourses, fetchUserEnrolledCourses, setEnrolledCourses, getToken, user
+        currency, allCourses, navigate, calculateRating, getAverageRating, calculateChapterTime, courseDuration, totalLecture, isEducator, setIsEducator, enrolledCourses, fetchUserEnrolledCourses, setEnrolledCourses
     }
 
     return (

@@ -1,52 +1,22 @@
-import React, { useContext, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { AppContext } from '../../context/AppContext';
+import React, { useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 
 const Loading = ({ message }) => {
     const { path } = useParams();
-    const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    const { backendUrl, fetchUserEnrolledCourses } = useContext(AppContext);
 
     useEffect(() => {
-        let isMounted = true;
-        const sessionId = searchParams.get('session_id');
-
-        const handleVerificationAndNavigation = async () => {
-            if (sessionId) {
-                try {
-                    const apiBase = backendUrl || 'http://localhost:5000';
-                    await fetch(`${apiBase}/api/user/verify-purchase`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ sessionId })
-                    });
-                    if (fetchUserEnrolledCourses) {
-                        await fetchUserEnrolledCourses();
-                    }
-                } catch (err) {
-                    console.error('Failed to verify purchase session:', err);
-                }
-            }
-
-            if (!isMounted) return;
-
-            const targetPath = path === 'enrolled' || path === 'my-enrollments' ? '/my-enrollments' : `/${path || ''}`;
-            const timer = setTimeout(() => {
-                navigate(targetPath);
-            }, sessionId ? 1500 : 3000);
-
-            return () => clearTimeout(timer);
-        };
-
         if (path) {
-            handleVerificationAndNavigation();
+            const timer = setTimeout(() => {
+                if (path === 'enrolled') {
+                    navigate('/my-enrollments');
+                } else {
+                    navigate(`/${path}`);
+                }
+            }, 5000);
+            return () => clearTimeout(timer);
         }
-
-        return () => {
-            isMounted = false;
-        };
-    }, [path, navigate, searchParams, backendUrl, fetchUserEnrolledCourses]);
+    }, [path, navigate]);
 
     return (
         <div className='min-h-[75vh] flex flex-col items-center justify-center px-4'>

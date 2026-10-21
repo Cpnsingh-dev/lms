@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
+import uniqid from 'uniqid';
 import Quill from 'quill'
 import 'quill/dist/quill.snow.css';
 import { assets } from '../../assets/assets';
-
-const generateId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11));
 
 const AddCourses = () => {
 
@@ -29,7 +28,7 @@ const AddCourses = () => {
             const title = prompt("Enter Chapter Title: ");
             if (title) {
                 const newChapter = {
-                    chapterId: generateId(),
+                    chapterId: uniqid(),
                     chapterTitle: title,
                     chapterContent: [],
                     collapsed: false,
