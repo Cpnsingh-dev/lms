@@ -7,10 +7,22 @@ import YouTube from 'react-youtube'
 import Rating from '../../component/student/Rating'
 import Footer from '../../component/student/Footer'
 import Loading from '../../component/student/Loading'
+import { useUser } from '@clerk/clerk-react'
+import axios from 'axios'
 
 const Player = () => {
     const { courseId } = useParams();
-    const { enrolledCourses, allCourses, calculateChapterTime } = useContext(AppContext);
+    const {
+        enrolledCourses,
+        allCourses,
+        calculateChapterTime,
+        backenedUrl,
+        getToken,
+        updateCourseProgress,
+        rateCourse,
+        fetchCourseProgress
+    } = useContext(AppContext);
+    const { user } = useUser();
 
     const [courseData, setCourseData] = useState(null);
     const [openChapter, setOpenChapter] = useState({});
@@ -18,14 +30,39 @@ const Player = () => {
     const [completedLectures, setCompletedLectures] = useState([]);
     const [initialRating, setInitialRating] = useState(0);
 
-    // Fetch course data from enrolledCourses or allCourses
-    const fetchCourseData = () => {
+    // Fetch course data from enrolledCourses or directly from API
+    const fetchCourseData = async () => {
+        try {
+            const token = await getToken();
+            const { data } = await axios.get(backenedUrl + "/api/course/" + courseId, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
+            if (data.success && data.course) {
+                setCourseData(data.course);
+                const ratings = data.course.courseRating || data.course.courseRatings || [];
+                const myRating = ratings.find(r => r.userId?.toString() === user?.id?.toString());
+                if (myRating) setInitialRating(myRating.rating);
+                return;
+            }
+        } catch (error) {
+            console.error("Error fetching course for player:", error);
+        }
+
         const course = (enrolledCourses?.length > 0
             ? enrolledCourses.find(c => c._id === courseId)
             : null) || allCourses.find(c => c._id === courseId);
 
         if (course) {
             setCourseData(course);
+        }
+    };
+
+    // Load progress from backend
+    const loadProgress = async () => {
+        if (!courseId) return;
+        const progress = await fetchCourseProgress(courseId);
+        if (progress && Array.isArray(progress.lectureCompleted)) {
+            setCompletedLectures(progress.lectureCompleted);
         }
     };
 
@@ -72,24 +109,29 @@ const Player = () => {
     };
 
     // Toggle lecture completion status
-    const toggleLectureCompleted = (lectureId) => {
-        setCompletedLectures(prev =>
-            prev.includes(lectureId)
-                ? prev.filter(id => id !== lectureId)
-                : [...prev, lectureId]
-        );
+    const toggleLectureCompleted = async (lectureId) => {
+        const isDone = completedLectures.includes(lectureId);
+        if (!isDone) {
+            const success = await updateCourseProgress(courseId, lectureId);
+            if (success) {
+                setCompletedLectures(prev => [...prev, lectureId]);
+            }
+        } else {
+            // Already completed in DB
+            setCompletedLectures(prev => prev.filter(id => id !== lectureId));
+        }
     };
 
     // Handle course rating
-    const handleRating = (rating) => {
+    const handleRating = async (rating) => {
         setInitialRating(rating);
+        await rateCourse(courseId, rating);
     };
 
     useEffect(() => {
-        if (enrolledCourses.length > 0 || allCourses.length > 0) {
-            fetchCourseData();
-        }
-    }, [enrolledCourses, allCourses, courseId]);
+        fetchCourseData();
+        loadProgress();
+    }, [courseId, user]);
 
     // Open first chapter by default when course loads
     useEffect(() => {

@@ -1,22 +1,55 @@
-import React, { useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import React, { useContext, useEffect, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { AppContext } from '../../context/AppContext';
+import axios from 'axios';
+import { toast } from 'react-toastify';
 
 const Loading = ({ message }) => {
     const { path } = useParams();
+    const [searchParams] = useSearchParams();
     const navigate = useNavigate();
+    const { backenedUrl, getToken, fetchUserEnrolledCourses, fetchUserData } = useContext(AppContext);
+    const [statusText, setStatusText] = useState(message || 'Please wait while we prepare your content...');
 
     useEffect(() => {
-        if (path) {
-            const timer = setTimeout(() => {
-                if (path === 'enrolled') {
-                    navigate('/my-enrollments');
-                } else {
-                    navigate(`/${path}`);
+        const sessionId = searchParams.get('session_id');
+
+        const verifyAndRedirect = async () => {
+            if (sessionId) {
+                setStatusText('Verifying your purchase with Stripe...');
+                try {
+                    const token = await getToken();
+                    const { data } = await axios.post(
+                        backenedUrl + "/api/user/verify-purchase",
+                        { sessionId },
+                        { headers: { Authorization: `Bearer ${token}` } }
+                    );
+                    if (data.success) {
+                        toast.success("Payment confirmed! Welcome to the course.");
+                    }
+                    await fetchUserEnrolledCourses();
+                    await fetchUserData();
+                } catch (err) {
+                    console.error("Verification error:", err);
                 }
-            }, 5000);
-            return () => clearTimeout(timer);
-        }
-    }, [path, navigate]);
+                navigate('/my-enrollments');
+                return;
+            }
+
+            if (path) {
+                const timer = setTimeout(() => {
+                    if (path === 'enrolled') {
+                        navigate('/my-enrollments');
+                    } else {
+                        navigate(`/${path}`);
+                    }
+                }, 2000);
+                return () => clearTimeout(timer);
+            }
+        };
+
+        verifyAndRedirect();
+    }, [path, searchParams, navigate]);
 
     return (
         <div className='min-h-[75vh] flex flex-col items-center justify-center px-4'>
@@ -46,9 +79,7 @@ const Loading = ({ message }) => {
                     </span>
                 </h3>
                 <p className='text-xs sm:text-sm text-gray-500 mt-1 max-w-xs'>
-                    {path
-                        ? 'Redirecting to your destination, please wait...'
-                        : message || 'Please wait while we prepare your content...'}
+                    {statusText}
                 </p>
             </div>
         </div>

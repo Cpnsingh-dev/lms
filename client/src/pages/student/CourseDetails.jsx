@@ -6,6 +6,7 @@ import { assets } from '../../assets/assets';
 import humanizeDuration from 'humanize-duration';
 import Footer from '../../component/student/Footer';
 import YouTube from 'react-youtube';
+import axios from 'axios';
 
 const CourseDetails = () => {
 
@@ -13,15 +14,53 @@ const CourseDetails = () => {
 
     const [courseData, setCourseData] = useState(null);
     const [openChapter, setOpenChapter] = useState({});
-    const [isOpenrolled, setIsEnrolled] = useState(false);
     const [playerData, setPlayerData] = useState(null);
 
-    const { allCourses, currency, calculateRating, courseDuration, totalLecture, calculateChapterTime } = useContext(AppContext);
+    const {
+        allCourses,
+        currency,
+        calculateRating,
+        courseDuration,
+        totalLecture,
+        calculateChapterTime,
+        backenedUrl,
+        enrollCourse,
+        isEnrolling,
+        enrolledCourses,
+        userData,
+        navigate
+    } = useContext(AppContext);
+
+    const isEnrolled = Boolean(
+        enrolledCourses?.some(c => (c._id || c).toString() === id?.toString()) ||
+        userData?.enrolledCourses?.some(c => (c._id || c).toString() === id?.toString())
+    );
 
     const fetchCourseData = async () => {
+        try {
+            const { data } = await axios.get(backenedUrl + "/api/course/" + id);
+            if (data.success && data.course) {
+                setCourseData(data.course);
+                return;
+            }
+        } catch (error) {
+            console.error("Error fetching course details:", error);
+        }
+        // Fallback to allCourses cache
         const findCourse = allCourses.find(course => course._id === id);
-        setCourseData(findCourse);
+        if (findCourse) setCourseData(findCourse);
     }
+
+    const getYouTubeVideoId = (url) => {
+        if (!url) return '';
+        try {
+            if (url.includes('youtu.be/')) return url.split('youtu.be/')[1].split('?')[0];
+            if (url.includes('watch?v=')) return url.split('watch?v=')[1].split('&')[0];
+            return url.split('/').pop().split('?')[0];
+        } catch {
+            return url.split('/').pop() || '';
+        }
+    };
 
     //toggkle
     const toggleChapter = (index) => {
@@ -36,10 +75,10 @@ const CourseDetails = () => {
 
     useEffect(() => {
         fetchCourseData();
-    }, [allCourses, id])
+    }, [id])
 
     const avgRating = courseData ? calculateRating(courseData) : 0;
-    const ratingsCount = courseData?.courseRatings?.length || 0;
+    const ratingsCount = (courseData?.courseRatings || courseData?.courseRating || []).length;
 
     return courseData ? (
         <>
@@ -66,7 +105,7 @@ const CourseDetails = () => {
                         </div>
                         <p className='text-gray-500 text-xs'>({ratingsCount})</p>
                     </div>
-                    <p className='text-sm pt-2'>Course by <span className='text-blue-600 underline'>Chandra pratap</span></p>
+                    <p className='text-sm pt-2'>Course by <span className='text-blue-600 underline font-medium'>{courseData?.educator?.name || 'Educator'}</span></p>
                     <div className='pt-8 text-gray-800'>
                         <h2 className='text-xl font-semibold'>Course Structure</h2>
                         <div className='pt-5'>
@@ -77,41 +116,42 @@ const CourseDetails = () => {
                                             <img className={`transform transition-transform ${openChapter[idx] ? 'rotate-180' : ''}`} src={assets.down_arrow_icon} alt="down-arrow" />
                                             <p className='font-medium md:text-base text-sm'>{chapter.chapterTitle}</p>
                                         </div>
-                                        <p className='text-sm md:text-default'>{chapter.chapterContent.length} lectures - {calculateChapterTime(chapter)}</p>
+                                        <p className='text-sm md:text-default'>{chapter.chapterContent?.length || 0} lectures - {calculateChapterTime(chapter)}</p>
                                     </div>
                                     <div className={`overflow-hidden transition-all duration-300 ${openChapter[idx] ? 'max-h-96' : 'max-h-0'}`}>
                                         <ul className='list-disc md:pl-10 pl-4 pr-4 py-2 text-gray-600 border-t border-gray-300'>
-                                            {chapter.chapterContent.map((lecture, idx) => (
-                                                <li key={idx} className='flex items-start gap-2 py-1'>
-                                                    <img src={assets.play_icon} alt="play" className='w-4 h-4 mt-1' />
-                                                    <div className='flex items-center justify-between w-full text-gray-800 text-xs md:text-default'>
-                                                        <p>{lecture.lectureTitle}</p>
-                                                        <div className='flex gap-2'>
-                                                            {lecture.isPreviewFree && (
-                                                                <p
-                                                                    onClick={() => {
-                                                                        const videoId = lecture.lectureUrl.split('/').pop();
-                                                                        if (playerData?.videoId === videoId) {
-                                                                            setPlayerData(null);
-                                                                        } else {
-                                                                            setPlayerData({ videoId });
-                                                                            if (window.innerWidth < 768) {
-                                                                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                                            {chapter.chapterContent?.map((lecture, lIdx) => {
+                                                const vidId = getYouTubeVideoId(lecture.lectureUrl);
+                                                const isPlaying = playerData?.videoId === vidId && vidId !== '';
+                                                return (
+                                                    <li key={lIdx} className='flex items-start gap-2 py-1'>
+                                                        <img src={assets.play_icon} alt="play" className='w-4 h-4 mt-1' />
+                                                        <div className='flex items-center justify-between w-full text-gray-800 text-xs md:text-default'>
+                                                            <p>{lecture.lectureTitle}</p>
+                                                            <div className='flex gap-2 items-center'>
+                                                                {lecture.isPreviewFree && (
+                                                                    <p
+                                                                        onClick={() => {
+                                                                            if (isPlaying) {
+                                                                                setPlayerData(null);
+                                                                            } else {
+                                                                                setPlayerData({ videoId: vidId });
+                                                                                if (window.innerWidth < 768) {
+                                                                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                                                }
                                                                             }
-                                                                        }
-                                                                    }}
-                                                                    className={`cursor-pointer font-medium ${playerData?.videoId === lecture.lectureUrl.split('/').pop() ? 'text-red-500' : 'text-blue-600'}`}
-                                                                >
-                                                                    {playerData?.videoId === lecture.lectureUrl.split('/').pop() ? 'Stop' : 'Preview'}
-                                                                </p>
-                                                            )}
-                                                            <p>{humanizeDuration(lecture.lectureDuration * 60 * 1000,
-                                                                { units: ["m", "s"] }
-                                                            )}</p>
+                                                                        }}
+                                                                        className={`cursor-pointer font-medium ${isPlaying ? 'text-red-500' : 'text-blue-600'}`}
+                                                                    >
+                                                                        {isPlaying ? 'Stop' : 'Preview'}
+                                                                    </p>
+                                                                )}
+                                                                <p>{humanizeDuration(lecture.lectureDuration * 60 * 1000, { units: ["m", "s"] })}</p>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                </li>
-                                            ))}
+                                                    </li>
+                                                );
+                                            })}
                                         </ul>
                                     </div>
                                 </div>
@@ -160,7 +200,7 @@ const CourseDetails = () => {
                         <div className='flex items-center text-sm md:text-default gap-4 pt-2 md:pt-4 text-gray-500'>
                             <div className='flex items-center gap-1'>
                                 <img src={assets.star} alt="star-icon" />
-                                <p>({calculateRating(courseData)}) {courseData.courseRatings.length} ratings</p>
+                                <p>({avgRating > 0 ? avgRating.toFixed(1) : '0'}) {ratingsCount} ratings</p>
                             </div>
                             <div className='h-4 w-px bg-gray-500/40'></div>
 
@@ -177,9 +217,22 @@ const CourseDetails = () => {
                             </div>
                         </div>
 
-                        <button className='md:mt-6 mt-4 w-full py-3 rounded bg-blue-600 text-white font-medium hover:bg-blue-700 transition cursor-pointer'>
-                            {isOpenrolled ? 'Go to Course' : 'Buy Now'}
-                        </button>
+                        {isEnrolled ? (
+                            <button
+                                onClick={() => navigate('/player/' + courseData._id)}
+                                className='md:mt-6 mt-4 w-full py-3 rounded bg-green-600 hover:bg-green-700 text-white font-medium transition cursor-pointer shadow flex items-center justify-center gap-2'
+                            >
+                                Go to Course
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => enrollCourse(courseData._id)}
+                                disabled={isEnrolling}
+                                className='md:mt-6 mt-4 w-full py-3 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium transition cursor-pointer shadow disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center'
+                            >
+                                {isEnrolling ? 'Redirecting to checkout...' : 'Buy Now'}
+                            </button>
+                        )}
 
                         <div className='pt-6'>
                             <p className='md:text-xl text-lg font-medium text-gray-800'>What's in the Course</p>

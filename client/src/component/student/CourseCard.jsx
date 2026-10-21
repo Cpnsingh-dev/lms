@@ -10,7 +10,7 @@ const CourseCard = ({ course }) => {
     // Calculate rating safely
     const ratingFn = calculateRating || getAverageRating
     const avgRating = ratingFn ? ratingFn(course) : 0
-    const ratingsCount = course?.courseRatings?.length || 0
+    const ratingsCount = (course?.courseRatings || course?.courseRating || []).length
 
     // Price calculation
     const hasDiscount = Boolean(course?.discount && course.discount > 0)
@@ -33,7 +33,7 @@ const CourseCard = ({ course }) => {
             </div>
             <div className='p-3 text-left flex flex-col gap-1'>
                 <h3 className='text-base font-semibold text-gray-900 line-clamp-2 leading-snug'>{course.courseTitle}</h3>
-                <p className='text-gray-500 text-sm truncate'>{course.educator?.name || 'Chandra'}</p>
+                <p className='text-gray-500 text-sm truncate'>{course.educator?.name || 'Educator'}</p>
                 <div className='flex items-center space-x-2 my-0.5'>
                     <p className='text-sm font-semibold text-gray-800'>{avgRating > 0 ? avgRating.toFixed(1) : '0'}</p>
                     <div className='flex items-center gap-0.5'>

@@ -64,7 +64,7 @@ export const addCourse = async (req, res) => {
 export const getEducatorCourses = async (req, res) => {
     try {
         const auth = typeof req.auth === 'function' ? req.auth() : req.auth;
-        const educator = auth?.userId;
+        const educator = auth?.userId || req.headers['user-id'];
 
         const courses = await Course.find({ educator: educator })
         res.json({ success: true, message: "Educator courses fetched successfully", courses })
@@ -114,7 +114,9 @@ export const getEducatorData = async (req, res) => {
                 courses: courses,
                 totalCourses: totalCourses,
                 totalEarning: totalEarning,
-                enrolledStudents: enrolledStudents
+                totalEarnings: totalEarning,
+                enrolledStudents: enrolledStudents,
+                enrolledStudentsData: enrolledStudents
             }
         })
 

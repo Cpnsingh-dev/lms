@@ -1,16 +1,31 @@
 import React, { useContext, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { AppContext } from '../../context/AppContext';
-import { assets, dummyDashboardData } from '../../assets/assets';
+import { assets } from '../../assets/assets';
 import Loading from '../../component/student/Loading';
+import axios from 'axios';
+import { toast } from 'react-toastify';
 
 const Dashboard = () => {
 
     const [dashboardData, setDashboardData] = useState(null);
-    const { currency } = useContext(AppContext);
+    const { currency, backenedUrl, getToken } = useContext(AppContext);
 
     const fetchDashData = async () => {
-        setDashboardData(dummyDashboardData);
+        try {
+            const token = await getToken();
+            const { data } = await axios.get(backenedUrl + "/api/educator/dashboard", {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (data.success && data.dashboardData) {
+                setDashboardData(data.dashboardData);
+            } else {
+                toast.error(data.message || "Failed to load dashboard");
+            }
+        } catch (error) {
+            console.error("fetchDashData error:", error);
+            toast.error(error.message);
+        }
     }
 
     useEffect(() => {
@@ -24,21 +39,21 @@ const Dashboard = () => {
                     <div className='flex items-center gap-3 shadow-card border border-blue-500 p-4 w-full sm:w-56 rounded-md'>
                         <img src={assets.patients_icon} alt="patients-icon" />
                         <div>
-                            <p className='text-2xl font-medium text-gray-600'>{dashboardData.enrolledStudentsData.length}</p>
+                            <p className='text-2xl font-medium text-gray-600'>{(dashboardData.enrolledStudentsData || dashboardData.enrolledStudents || []).length}</p>
                             <p className='text-base text-gray-500'>Enrolled Students</p>
                         </div>
                     </div>
                     <div className='flex items-center gap-3 shadow-card border border-blue-500 p-4 w-full sm:w-56 rounded-md'>
                         <img src={assets.appointments_icon} alt="appointments-icon" />
                         <div>
-                            <p className='text-2xl font-medium text-gray-600'>{dashboardData.totalCourses}</p>
+                            <p className='text-2xl font-medium text-gray-600'>{dashboardData.totalCourses || 0}</p>
                             <p className='text-base text-gray-500'>Total Courses</p>
                         </div>
                     </div>
                     <div className='flex items-center gap-3 shadow-card border border-blue-500 p-4 w-full sm:w-56 rounded-md'>
                         <img src={assets.earning_icon} alt="earning-icon" />
                         <div>
-                            <p className='text-2xl font-medium text-gray-600'>{currency}{dashboardData.totalEarnings.toFixed(2)}</p>
+                            <p className='text-2xl font-medium text-gray-600'>{currency}{Number(dashboardData.totalEarnings ?? dashboardData.totalEarning ?? 0).toFixed(2)}</p>
                             <p className='text-base text-gray-500'>Total Earnings</p>
                         </div>
                     </div>
@@ -57,20 +72,28 @@ const Dashboard = () => {
                                     </tr>
                                 </thead>
                                 <tbody className='text-sm text-gray-500'>
-                                    {dashboardData.enrolledStudentsData.map((i, idx) => (
-                                        <tr key={idx} className='border-b border-gray-500/20'>
-                                            <td className='px-4 py-3 text-center hidden sm:table-cell'>
-                                                {idx + 1}
-                                            </td>
-                                            <td className='md:px-4 px-3 py-3 flex items-center space-x-3'>
-                                                <img src={i.student.imageUrl} alt="" className='w-9 h-9 rounded-full shrink-0' />
-                                                <span className='truncate'>{i.student.name || i.student.fullName}</span>
-                                            </td>
-                                            <td className='md:px-4 px-3 py-3 truncate'>
-                                                {i.courseTitle}
+                                    {(dashboardData.enrolledStudentsData || dashboardData.enrolledStudents || []).length > 0 ? (
+                                        (dashboardData.enrolledStudentsData || dashboardData.enrolledStudents).map((i, idx) => (
+                                            <tr key={idx} className='border-b border-gray-500/20'>
+                                                <td className='px-4 py-3 text-center hidden sm:table-cell'>
+                                                    {idx + 1}
+                                                </td>
+                                                <td className='md:px-4 px-3 py-3 flex items-center space-x-3'>
+                                                    <img src={i.student?.imageUrl || assets.profile_img} alt="" className='w-9 h-9 rounded-full shrink-0' />
+                                                    <span className='truncate'>{i.student?.name || i.student?.fullName || 'Student'}</span>
+                                                </td>
+                                                <td className='md:px-4 px-3 py-3 truncate'>
+                                                    {i.courseTitle}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan='3' className='text-center py-8 text-gray-500'>
+                                                No students enrolled yet.
                                             </td>
                                         </tr>
-                                    ))}
+                                    )}
                                 </tbody>
                             </table>
                         </div>

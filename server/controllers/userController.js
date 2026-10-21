@@ -4,6 +4,29 @@ import User from "../models/User.js";
 import Stripe from "stripe";
 import { fulfillPurchase } from "./webhooks.js";
 import { CourseProgress } from "../models/courseProgress.js";
+import { clerkClient } from "@clerk/express";
+
+// Helper to auto-sync user from Clerk if missing from MongoDB
+const ensureUserExists = async (userId) => {
+    if (!userId) return null;
+    let user = await User.findById(userId);
+    if (!user) {
+        try {
+            const clerkUser = await clerkClient.users.getUser(userId);
+            if (clerkUser) {
+                user = await User.create({
+                    _id: userId,
+                    name: `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || clerkUser.username || "User",
+                    email: clerkUser.emailAddresses?.[0]?.emailAddress || "",
+                    imageUrl: clerkUser.imageUrl || ""
+                });
+            }
+        } catch (err) {
+            console.error("Auto-sync from Clerk failed:", err.message);
+        }
+    }
+    return user;
+};
 
 //api to get usetData
 export const getUserData = async (req, res) => {
@@ -17,7 +40,7 @@ export const getUserData = async (req, res) => {
             return res.json({ success: false, message: "user not found" })
         }
 
-        const user = await User.findById(userId)
+        const user = await ensureUserExists(userId);
 
         if (!user) {
             return res.json({ success: false, message: "user not found" })
@@ -26,7 +49,8 @@ export const getUserData = async (req, res) => {
         return res.json({
             success: true,
             message: "user fetched successfully",
-            user: user
+            user: user,
+            userData: user
         })
 
     } catch (error) {
@@ -66,7 +90,8 @@ export const getUserEnrolledCourses = async (req, res) => {
             console.error("Auto-reconcile error:", reconcileError);
         }
 
-        const userData = await User.findById(userId).populate("enrolledCourses")
+        await ensureUserExists(userId);
+        const userData = await User.findById(userId).populate("enrolledCourses");
 
         if (!userData) {
             return res.json({ success: false, message: "user not found" })
@@ -75,7 +100,7 @@ export const getUserEnrolledCourses = async (req, res) => {
         return res.json({
             success: true,
             message: "user enrolled courses fetched successfully",
-            enrolledCourses: userData.enrolledCourses
+            enrolledCourses: userData.enrolledCourses || []
         })
 
     } catch (error) {
@@ -92,7 +117,7 @@ export const purchaseCourse = async (req, res) => {
         const { origin } = req.headers;
         const auth = typeof req.auth === 'function' ? req.auth() : req.auth;
         const userId = auth?.userId || req.headers['user-id'];
-        const userData = await User.findById(userId);
+        const userData = await ensureUserExists(userId);
 
         if (!userData) {
             return res.json({ success: false, message: "user not found" })
@@ -104,17 +129,63 @@ export const purchaseCourse = async (req, res) => {
             return res.json({ success: false, message: "course not found" })
         }
 
+        // Check if user is already enrolled
+        if (userData.enrolledCourses && userData.enrolledCourses.some(id => id.toString() === courseId.toString())) {
+            return res.json({ success: false, message: "You are already enrolled in this course" });
+        }
+
+        // Check if there is already a completed purchase for this user & course
+        const existingCompleted = await Purchase.findOne({
+            userId,
+            courseId: courseData._id,
+            status: "Completed"
+        });
+        if (existingCompleted) {
+            return res.json({ success: false, message: "You are already enrolled in this course" });
+        }
+
         const discount = Number(courseData.discount) || 0;
         const price = Number(courseData.coursePrice) || 0;
         const finalAmount = Number((price - (discount * price) / 100).toFixed(2));
 
-        const purchaseData = {
-            courseId: courseData._id,
+        // Check if there is already an existing pending purchase for this user & course - REUSE IT!
+        let newPurchase = await Purchase.findOne({
             userId,
-            amount: finalAmount,
+            courseId: courseData._id,
+            status: "Pending"
+        });
+
+        if (newPurchase) {
+            newPurchase.amount = finalAmount;
+            await newPurchase.save();
+        } else {
+            const purchaseData = {
+                courseId: courseData._id,
+                userId,
+                amount: finalAmount,
+            };
+            newPurchase = await Purchase.create(purchaseData);
         }
 
-        const newPurchase = await Purchase.create(purchaseData);
+        // Remove any other duplicate pending purchases if they were created simultaneously
+        await Purchase.deleteMany({
+            _id: { $ne: newPurchase._id },
+            userId,
+            courseId: courseData._id,
+            status: "Pending"
+        });
+
+        // If free course (amount is 0 or less), immediately fulfill without Stripe redirect
+        if (finalAmount <= 0) {
+            newPurchase.status = "Completed";
+            await newPurchase.save();
+            await fulfillPurchase(newPurchase._id);
+            return res.json({
+                success: true,
+                message: "Enrolled in course successfully!",
+                isFree: true
+            });
+        }
 
         //stripe gateway initialise
         const StripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -299,14 +370,19 @@ export const userRating = async (req, res) => {
         if (!course) {
             return res.json({ success: false, message: "course not found" });
         }
-        const user = await User.findById(userId);
-        if (!user || !user.enrolledCourses.includes(courseId)) {
+        const user = await ensureUserExists(userId);
+        const isEnrolled = user?.enrolledCourses?.some(id => id.toString() === courseId.toString());
+        if (!user || !isEnrolled) {
             return res.json({ success: false, message: "user has not enrolled in this course" });
         }
 
-        const existingRatingIndex = course.courseRating.findIndex(item => item.userId.toString() === userId.toString());
+        if (!Array.isArray(course.courseRating)) {
+            course.courseRating = [];
+        }
 
-        if (existingRatingIndex != -1) {
+        const existingRatingIndex = course.courseRating.findIndex(item => item.userId?.toString() === userId.toString());
+
+        if (existingRatingIndex !== -1) {
             course.courseRating[existingRatingIndex].rating = rating;
         } else {
             course.courseRating.push({ userId, rating });

@@ -9,7 +9,15 @@ const Navbar = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const isCourseListPage = location.pathname.includes('/course-list');
-    const { isEducator } = useContext(AppContext)
+    const { isEducator, becomeEducator } = useContext(AppContext)
+
+    const handleEducatorClick = () => {
+        if (isEducator) {
+            navigate('/educator');
+        } else {
+            becomeEducator();
+        }
+    };
 
     const { openSignIn } = useClerk()
     const { user } = useUser()
@@ -21,7 +29,7 @@ const Navbar = () => {
                 <div className='flex items-center gap-5'>
                     {user && (
                         <>
-                            <button onClick={() => navigate('/educator')} className='hover:text-gray-800 transition'>{isEducator ? 'Educator Dashboard' : 'Become Educator'}</button>
+                            <button onClick={handleEducatorClick} className='hover:text-gray-800 transition cursor-pointer font-medium'>{isEducator ? 'Educator Dashboard' : 'Become Educator'}</button>
                             {isEducator ? null : <span className='text-gray-400'>|</span>}
                             <Link to='/my-enrollments' className='hover:text-gray-800 transition'>My Enrollments</Link>
                         </>
@@ -38,7 +46,7 @@ const Navbar = () => {
                 <div className='flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs whitespace-nowrap'>
                     {user && (
                         <>
-                            <button onClick={() => navigate('/educator')} className='hover:text-gray-800 transition'>{isEducator ? 'Educator Dashboard' : 'Become Educator'}</button>
+                            <button onClick={handleEducatorClick} className='hover:text-gray-800 transition cursor-pointer font-medium'>{isEducator ? 'Educator Dashboard' : 'Become Educator'}</button>
                             {isEducator ? null : <span className='text-gray-400'>|</span>}
                             <Link to='/my-enrollments' className='hover:text-gray-800 transition'>My Enrollments</Link>
                         </>

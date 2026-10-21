@@ -1,10 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useContext, useEffect, useRef, useState } from 'react'
 import uniqid from 'uniqid';
 import Quill from 'quill'
 import 'quill/dist/quill.snow.css';
 import { assets } from '../../assets/assets';
+import { AppContext } from '../../context/AppContext';
+import axios from 'axios';
+import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom';
 
 const AddCourses = () => {
+
+    const { backenedUrl, getToken, fetchCourses } = useContext(AppContext);
+    const navigate = useNavigate();
 
     const quillRef = useRef(null);
     const editorRef = useRef(null);
@@ -16,6 +23,7 @@ const AddCourses = () => {
     const [chapters, setChapters] = useState([])
     const [showPopup, setShowPopup] = useState(false);
     const [currentChapterId, setCurrentChapterId] = useState(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [lectureDetails, setLectureDetails] = useState({
         lectureTitle: "",
         lectureDuration: "",
@@ -68,7 +76,10 @@ const AddCourses = () => {
         }
         setChapters(chapters.map((chapter) => {
             if (chapter.chapterId === currentChapterId) {
-                chapter.chapterContent.push(lectureDetails)
+                chapter.chapterContent.push({
+                    ...lectureDetails,
+                    lectureId: uniqid()
+                })
             }
             return chapter;
         }))
@@ -80,7 +91,75 @@ const AddCourses = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        try {
+            if (!image) {
+                toast.warn("Please upload a course thumbnail");
+                return;
+            }
+            if (!courseTitle.trim()) {
+                toast.warn("Please enter a course title");
+                return;
+            }
+            const descriptionHtml = quillRef.current?.root?.innerHTML;
+            if (!descriptionHtml || descriptionHtml === '<p><br></p>') {
+                toast.warn("Please enter a course description");
+                return;
+            }
+            if (chapters.length === 0) {
+                toast.warn("Please add at least one chapter");
+                return;
+            }
 
+            setIsSubmitting(true);
+            const token = await getToken();
+
+            const courseData = {
+                courseTitle: courseTitle.trim(),
+                courseDescription: descriptionHtml,
+                coursePrice: Number(price) || 0,
+                discount: Number(discountPrice) || 0,
+                courseContent: chapters.map((ch, chIdx) => ({
+                    chapterId: ch.chapterId,
+                    chapterTitle: ch.chapterTitle,
+                    chapterOrder: ch.chapterOrder || (chIdx + 1),
+                    chapterContent: ch.chapterContent.map((lec, lecIdx) => ({
+                        lectureId: lec.lectureId || uniqid(),
+                        lectureTitle: lec.lectureTitle,
+                        lectureDuration: Number(lec.lectureDuration) || 0,
+                        lectureUrl: lec.lectureUrl,
+                        isPreviewFree: Boolean(lec.isPreviewFree),
+                        lectureOrder: lec.lectureOrder || (lecIdx + 1)
+                    }))
+                }))
+            };
+
+            const formData = new FormData();
+            formData.append('courseData', JSON.stringify(courseData));
+            formData.append('image', image);
+
+            const { data } = await axios.post(
+                backenedUrl + "/api/educator/add-course",
+                formData,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                }
+            );
+
+            if (data.success) {
+                toast.success(data.message || "Course added successfully!");
+                await fetchCourses();
+                navigate('/educator/my-courses');
+            } else {
+                toast.error(data.message);
+            }
+        } catch (error) {
+            console.error("Course creation error:", error);
+            toast.error(error.message);
+        } finally {
+            setIsSubmitting(false);
+        }
     }
 
     useEffect(() => {
@@ -121,13 +200,13 @@ const AddCourses = () => {
 
     return (
         <div className='min-h-screen flex flex-col items-start justify-between md:p-8 md:pb-0 p-4 pt-8 pb-0'>
-            <form onClick={handleSubmit} className='flex flex-col gap-5 max-w-2xl w-full text-gray-700'>
+            <form onSubmit={handleSubmit} className='flex flex-col gap-5 max-w-2xl w-full text-gray-700'>
                 <div className='flex flex-col gap-1'>
                     <p className='font-medium text-gray-800'>Course Title</p>
                     <input
                         type="text"
                         placeholder='Type here'
-                        className='outline-none md:py-2.5 py-2 px-3 rounded border border-gray-500/40 w-full'
+                        className='outline-none md:py-2.5 py-2 px-3 rounded border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-full'
                         onChange={e => setCourseTitle(e.target.value)}
                         value={courseTitle}
                         required
@@ -135,7 +214,7 @@ const AddCourses = () => {
                 </div>
                 <div className='flex flex-col gap-1'>
                     <p className='font-medium text-gray-800'>Course Description</p>
-                    <div ref={editorRef} className='bg-white'></div>
+                    <div ref={editorRef} className='bg-white text-gray-900'></div>
                 </div>
 
                 <div className='flex items-center justify-between flex-wrap gap-4'>
@@ -147,7 +226,7 @@ const AddCourses = () => {
                             onChange={e => setPrice(e.target.value)}
                             placeholder='0'
                             value={price}
-                            className='outline-none md:py-2.5 py-2 w-28 px-3 rounded border border-gray-500/40'
+                            className='outline-none md:py-2.5 py-2 w-28 px-3 rounded border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
                             required
                         />
                     </div>
@@ -163,7 +242,13 @@ const AddCourses = () => {
                 </div>
                 <div className='flex flex-col gap-1'>
                     <p className='font-medium text-gray-800'>Discount %</p>
-                    <input type="number" onChange={e => setDiscountPrice(e.target.value)} value={discountPrice} placeholder='0' className='outline-none md:py-2.5 py-2 w-28 px-3 rounded border border-gray-500/40' />
+                    <input
+                        type="number"
+                        onChange={e => setDiscountPrice(e.target.value)}
+                        value={discountPrice}
+                        placeholder='0'
+                        className='outline-none md:py-2.5 py-2 w-28 px-3 rounded border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                    />
                 </div>
 
                 {/* Adding chapters and lectures */}
@@ -179,7 +264,7 @@ const AddCourses = () => {
                                         alt=""
                                         className={`mr-2 cursor-pointer transition-all ${c.collapsed && "-rotate-90"}`}
                                     />
-                                    <span className='font-semibold'>{idx + 1} {c.chapterTitle}</span>
+                                    <span className='font-semibold text-gray-900'>{idx + 1} {c.chapterTitle}</span>
                                 </div>
                                 <span className='text-gray-500'>{c.chapterContent.length} lectures</span>
                                 <img onClick={() => handleChapter('remove', c.chapterId)} src={assets.cross_icon} alt="" className='cursor-pointer' />
@@ -187,31 +272,32 @@ const AddCourses = () => {
                             {!c.collapsed && (
                                 <div className='p-4'>
                                     {c.chapterContent.map((l, i) => (
-                                        <div key={i} className='flex justify-between items-center mb-2'>
+                                        <div key={i} className='flex justify-between items-center mb-2 text-gray-800'>
                                             <span>
                                                 {i + 1} {l.lectureTitle} - {l.lectureDuration} mins - <a href={l.lectureUrl} target='_blank' rel='noreferrer' className='text-blue-500'>Link</a> - {l.isPreviewFree ? "Free" : "Paid"}
                                             </span>
                                             <img onClick={() => handleLecture('remove', c.chapterId, i)} src={assets.cross_icon} alt="" className='cursor-pointer' />
                                         </div>
                                     ))}
-                                    <div onClick={() => handleLecture('add', c.chapterId)} className='inline-flex bg-gray-100 p-2 rounded cursor-pointer mt-2 text-sm'>
+                                    <div onClick={() => handleLecture('add', c.chapterId)} className='inline-flex bg-gray-100 text-gray-700 p-2 rounded cursor-pointer mt-2 text-sm'>
                                         + Add Lecture
                                     </div>
                                 </div>
                             )}
                         </div>
                     ))}
-                    <div className='flex justify-center items-center bg-blue-100 p-2 rounded-lg cursor-pointer' onClick={() => handleChapter('add')}>+ Add Chapter</div>
+                    <div className='flex justify-center items-center bg-blue-100 text-blue-700 font-medium p-2 rounded-lg cursor-pointer' onClick={() => handleChapter('add')}>+ Add Chapter</div>
                     {
                         showPopup && (
                             <div className='fixed inset-0 flex items-center justify-center bg-gray-800/50 z-50'>
-                                <div className='bg-white text-gray-700 p-4 sm:p-6 rounded relative w-full max-w-80 sm:max-w-96'>
+                                <div className='bg-white text-gray-700 p-4 sm:p-6 rounded relative w-full max-w-80 sm:max-w-96 shadow-lg'>
                                     <h2 className='text-lg font-semibold mb-4 text-gray-800'>Add Lecture</h2>
                                     <div className='mb-2'>
                                         <p className='font-medium text-gray-800'>Lecture Title</p>
                                         <input
                                             type="text"
-                                            className='mt-1 block w-full border rounded py-1 px-2 border-gray-300 outline-none'
+                                            placeholder='Enter lecture title'
+                                            className='mt-1 block w-full border rounded py-1.5 px-3 border-gray-300 outline-none bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
                                             value={lectureDetails.lectureTitle}
                                             onChange={(e) => setLectureDetails({ ...lectureDetails, lectureTitle: e.target.value })}
                                         />
@@ -220,7 +306,8 @@ const AddCourses = () => {
                                         <p className='font-medium text-gray-800'>Lecture Duration (mins)</p>
                                         <input
                                             type="number"
-                                            className='mt-1 block w-full border rounded py-1 px-2 border-gray-300 outline-none'
+                                            placeholder='Duration in minutes'
+                                            className='mt-1 block w-full border rounded py-1.5 px-3 border-gray-300 outline-none bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
                                             value={lectureDetails.lectureDuration}
                                             onChange={(e) => setLectureDetails({ ...lectureDetails, lectureDuration: e.target.value })}
                                         />
@@ -229,7 +316,8 @@ const AddCourses = () => {
                                         <p className='font-medium text-gray-800'>Lecture Url</p>
                                         <input
                                             type="text"
-                                            className='mt-1 block w-full border rounded py-1 px-2 border-gray-300 outline-none'
+                                            placeholder='Enter lecture video URL'
+                                            className='mt-1 block w-full border rounded py-1.5 px-3 border-gray-300 outline-none bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
                                             value={lectureDetails.lectureUrl}
                                             onChange={(e) => setLectureDetails({ ...lectureDetails, lectureUrl: e.target.value })}
                                         />
@@ -244,14 +332,16 @@ const AddCourses = () => {
                                         />
                                         <label htmlFor="isPreviewFree" className='cursor-pointer text-sm font-medium text-gray-700'>Is Preview Free</label>
                                     </div>
-                                    <button onClick={addLecture} type='button' className='w-full bg-blue-400 hover:bg-blue-500 text-white px-4 py-2 rounded font-medium cursor-pointer transition'>Add</button>
+                                    <button onClick={addLecture} type='button' className='w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded font-medium cursor-pointer transition'>Add</button>
                                     <img onClick={() => setShowPopup(false)} src={assets.cross_icon} alt="" className='absolute top-4 right-4 w-4 cursor-pointer' />
                                 </div>
                             </div>
                         )
                     }
                 </div>
-                <button type='submit' className='bg-black text-white w-max py-2.5 px-8 rounded my-4 cursor-pointer hover:bg-gray-800 transition'>ADD</button>
+                <button type='submit' disabled={isSubmitting} className='bg-black text-white w-max py-2.5 px-8 rounded my-4 cursor-pointer hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium'>
+                    {isSubmitting ? 'Adding Course...' : 'ADD'}
+                </button>
             </form>
         </div>
     )
