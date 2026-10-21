@@ -1,11 +1,29 @@
-import React, { useContext, useState } from 'react'
+import React, { useContext, useEffect, useState } from 'react'
 import { AppContext } from '../../context/AppContext'
 import { Line } from 'rc-progress'
 import Footer from '../../component/student/Footer'
+import { useSearchParams } from 'react-router-dom'
 
 const MyEnrollments = () => {
 
-    const { enrolledCourses, fetchUserEnrolledCourses, navigate, setEnrolledCourses, courseDuration, totalLecture } = useContext(AppContext)
+    const { enrolledCourses, fetchUserEnrolledCourses, navigate, setEnrolledCourses, courseDuration, totalLecture, backendUrl } = useContext(AppContext)
+    const [searchParams] = useSearchParams();
+
+    useEffect(() => {
+        const sessionId = searchParams.get('session_id');
+        if (sessionId) {
+            const apiBase = backendUrl || 'http://localhost:5000';
+            fetch(`${apiBase}/api/user/verify-purchase`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId })
+            })
+                .then(() => fetchUserEnrolledCourses())
+                .catch(err => console.error("Session verification in MyEnrollments failed:", err));
+        } else {
+            fetchUserEnrolledCourses();
+        }
+    }, [searchParams, backendUrl]);
 
     const [progressArray, setProgressArray] = useState([
         { lectureCompleted: 4, lectureTotal: 10, },

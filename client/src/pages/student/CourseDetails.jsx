@@ -16,7 +16,7 @@ const CourseDetails = () => {
     const [isOpenrolled, setIsEnrolled] = useState(false);
     const [playerData, setPlayerData] = useState(null);
 
-    const { allCourses, currency, calculateRating, courseDuration, totalLecture, calculateChapterTime } = useContext(AppContext);
+    const { allCourses, currency, calculateRating, courseDuration, totalLecture, calculateChapterTime, enrolledCourses, backendUrl, navigate, getToken, user } = useContext(AppContext);
 
     const fetchCourseData = async () => {
         const findCourse = allCourses.find(course => course._id === id);
@@ -37,6 +37,53 @@ const CourseDetails = () => {
     useEffect(() => {
         fetchCourseData();
     }, [allCourses, id])
+
+    useEffect(() => {
+        if (enrolledCourses && courseData) {
+            const enrolled = enrolledCourses.some(course => (course._id || course) === courseData._id);
+            setIsEnrolled(enrolled);
+        }
+    }, [enrolledCourses, courseData]);
+
+    const enrollCourse = async () => {
+        if (isOpenrolled) {
+            navigate(`/player/${courseData._id}`);
+            return;
+        }
+
+        if (!user) {
+            alert("Please login to purchase this course");
+            return;
+        }
+
+        try {
+            const token = await getToken();
+            const headers = {
+                'Content-Type': 'application/json',
+                'user-id': user.id
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const apiBase = backendUrl || 'http://localhost:5000';
+            const response = await fetch(`${apiBase}/api/user/purchase`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ courseId: courseData._id })
+            });
+
+            const data = await response.json();
+            if (data.success && data.session_url) {
+                window.location.href = data.session_url;
+            } else {
+                alert(data.message || "Failed to create checkout session");
+            }
+        } catch (error) {
+            console.error("Purchase error:", error);
+            alert("Something went wrong while initiating checkout");
+        }
+    };
 
     const avgRating = courseData ? calculateRating(courseData) : 0;
     const ratingsCount = courseData?.courseRatings?.length || 0;
@@ -177,7 +224,7 @@ const CourseDetails = () => {
                             </div>
                         </div>
 
-                        <button className='md:mt-6 mt-4 w-full py-3 rounded bg-blue-600 text-white font-medium hover:bg-blue-700 transition cursor-pointer'>
+                        <button onClick={enrollCourse} className='md:mt-6 mt-4 w-full py-3 rounded bg-blue-600 text-white font-medium hover:bg-blue-700 transition cursor-pointer'>
                             {isOpenrolled ? 'Go to Course' : 'Buy Now'}
                         </button>
 

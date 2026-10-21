@@ -1,18 +1,52 @@
-import React, { useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import React, { useContext, useEffect } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { AppContext } from '../../context/AppContext';
 
 const Loading = ({ message }) => {
     const { path } = useParams();
+    const [searchParams] = useSearchParams();
     const navigate = useNavigate();
+    const { backendUrl, fetchUserEnrolledCourses } = useContext(AppContext);
 
     useEffect(() => {
-        if (path) {
+        let isMounted = true;
+        const sessionId = searchParams.get('session_id');
+
+        const handleVerificationAndNavigation = async () => {
+            if (sessionId) {
+                try {
+                    const apiBase = backendUrl || 'http://localhost:5000';
+                    await fetch(`${apiBase}/api/user/verify-purchase`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sessionId })
+                    });
+                    if (fetchUserEnrolledCourses) {
+                        await fetchUserEnrolledCourses();
+                    }
+                } catch (err) {
+                    console.error('Failed to verify purchase session:', err);
+                }
+            }
+
+            if (!isMounted) return;
+
+            const targetPath = path === 'enrolled' || path === 'my-enrollments' ? '/my-enrollments' : `/${path || ''}`;
             const timer = setTimeout(() => {
-                navigate(`/${path}`);
-            }, 5000);
+                navigate(targetPath);
+            }, sessionId ? 1500 : 3000);
+
             return () => clearTimeout(timer);
+        };
+
+        if (path) {
+            handleVerificationAndNavigation();
         }
-    }, [path, navigate]);
+
+        return () => {
+            isMounted = false;
+        };
+    }, [path, navigate, searchParams, backendUrl, fetchUserEnrolledCourses]);
 
     return (
         <div className='min-h-[75vh] flex flex-col items-center justify-center px-4'>

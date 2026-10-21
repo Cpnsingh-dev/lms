@@ -16,6 +16,9 @@ const app = express();
 await connectDB()
 await connectCloudinary();
 
+// Stripe Webhook needs the raw body for signature verification - MUST be defined before express.json()
+app.post('/stripe', express.raw({ type: 'application/json' }), stripeWebhooks);
+
 //middleware
 app.use(cors());
 app.use(express.json());
@@ -23,11 +26,10 @@ app.use(clerkMiddleware());
 
 //route
 app.get('/', (req, res) => res.send("Api is working"));
-app.post('/clerk', express.json(), clerkWebHooks);
-app.use('/api/educator', express.json(), educatorRouter);
-app.use('/api/course', express.json(), courseRouter);
-app.use('/api/user', express.json(), userRouter);
-app.post('/stripe', express.raw({ type: 'application/json' }), stripeWebhooks);
+app.post('/clerk', clerkWebHooks);
+app.use('/api/educator', educatorRouter);
+app.use('/api/course', courseRouter);
+app.use('/api/user', userRouter);
 
 //port
 const PORT = process.env.PORT || 5000;
